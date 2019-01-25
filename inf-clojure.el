@@ -368,18 +368,25 @@ sanitized command is empty."
         ""
       (concat sanitized "\n"))))
 
-(defun inf-clojure--send-string (proc string)
+(defun inf-clojure--send-string (proc string &rest silent)
   "A custom `comint-input-sender` / `comint-send-string`.
 It performs the required side effects on every send for PROC and
 STRING (for example set the buffer local REPL type).  It should
 always be preferred over `comint-send-string`.  It delegates to
 `comint-simple-send` so it always appends a newline at the end of
 the string for evaluation.  Refer to `comint-simple-send` for
-customizations."
+customizations.
+SILENT means that it will return the result instead of showing it
+in the repl."
   (inf-clojure--set-repl-type proc)
   (let ((sanitized (inf-clojure--sanitize-command string)))
     (inf-clojure--log-string sanitized "----CMD->")
-    (comint-send-string proc sanitized)))
+    (if silent
+        ;; Debug this branch, understand why this is leading to extraneous new lines
+        ;; Also figure out the way we display numbers vs string in the overlay and why
+        ;; This isn't working well
+      (inf-clojure--process-response string proc)
+      (comint-send-string proc sanitized))))
 
 (defcustom inf-clojure-load-form "(clojure.core/load-file \"%s\")"
   "Format-string for building a Clojure expression to load a file.
@@ -681,15 +688,19 @@ HOST is the host the process is running on, PORT is where it's listening."
   (interactive "shost: \nnport: ")
   (inf-clojure (cons host port)))
 
-(defun inf-clojure-eval-region (start end &optional and-go)
+(defun inf-clojure-eval-region (start end &optional and-go silent)
   "Send the current region to the inferior Clojure process.
-Prefix argument AND-GO means switch to the Clojure buffer afterwards."
+Prefix argument AND-GO means switch to the Clojure buffer afterwards.
+SILENT means return the result but don't print it in the repl, for example
+to display the result somewhere else."
   (interactive "r\nP")
   ;; drops newlines at the end of the region
   (let ((str (replace-regexp-in-string
               "[\n]+\\'" ""
               (buffer-substring-no-properties start end))))
-    (inf-clojure--send-string (inf-clojure-proc) str))
+    (inf-clojure--eval-overlay
+     (inf-clojure--send-string (inf-clojure-proc) str t)
+      end))
   (when and-go (inf-clojure-switch-to-repl t)))
 
 (defun inf-clojure-eval-string (code)
@@ -715,11 +726,11 @@ Prefix argument AND-GO means switch to the Clojure buffer afterwards."
     (let ((case-fold-search t))
       (inf-clojure-eval-region (point-min) (point-max) and-go))))
 
-(defun inf-clojure-eval-last-sexp (&optional and-go)
+(defun inf-clojure-eval-last-sexp (&optional and-go silent)
   "Send the previous sexp to the inferior Clojure process.
 Prefix argument AND-GO means switch to the Clojure buffer afterwards."
   (interactive "P")
-  (inf-clojure-eval-region (save-excursion (backward-sexp) (point)) (point) and-go))
+  (inf-clojure-eval-region (save-excursion (backward-sexp) (point)) (point) and-go silent))
 
 (defun inf-clojure-eval-form-and-next ()
   "Send the previous sexp to the inferior Clojure process and move to the next one."
@@ -1758,9 +1769,7 @@ This function also removes itself from `pre-command-hook'."
   "Wrapper for `inf-clojure-eval-last-sexp' that overlays results."
   (interactive "P")
   (inf-clojure--eval-overlay
-   ;;(inf-clojure-eval-last-sexp something)
-   ;;TODO uncomment above and figure out how to get the results
-   "Hello from overlay"
+   (inf-clojure-eval-last-sexp nil t)
    (point)))
 
 ;; TODO do we need to pass args here?
