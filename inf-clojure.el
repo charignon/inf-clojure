@@ -1693,18 +1693,15 @@ the overlay."
                  (t (current-buffer)))))
     (with-current-buffer buffer
       (save-excursion
+        ;; Is this necessary?
         (when (number-or-marker-p where)
           (goto-char where))
         ;; Make sure the overlay is actually at the end of the sexp.
         (skip-chars-backward "\r\n[:blank:]")
-        (let* ((beg (if (consp where)
-                        (car where)
-                      (save-excursion
+        (let* ((beg (save-excursion
                         (backward-sexp 1)
-                        (point))))
-               (end (if (consp where)
-                        (cdr where)
-                      (line-end-position)))
+                        (point)))
+               (end (line-end-position))
                (display-string (format format value))
                (o nil))
           (remove-overlays beg end 'category type)
@@ -1738,19 +1735,7 @@ the overlay."
                           (add-hook 'pre-command-hook
                                     #'inf-clojure--remove-result-overlay
                                     nil 'local)
-                        (inf-clojure--remove-result-overlay))))
-          (let ((win (get-buffer-window buffer)))
-            ;; Left edge is visible.
-            (when (and win
-                       (<= (window-start win) (point))
-                       ;; In 24.3 `<=' is still a binary predicate.
-                       (<= (point) (window-end win))
-                       ;; Right edge is visible. This is a little conservative
-                       ;; if the overlay contains line breaks.
-                       (or (< (+ (current-column) (string-width value))
-                              (window-width win))
-                           (not truncate-lines)))
-              o)))))))
+                        (inf-clojure--remove-result-overlay)))))))))
 
 (defun inf-clojure--remove-result-overlay ()
   "Remove result overlay from current buffer.
